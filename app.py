@@ -380,17 +380,38 @@ def build_chart(df, sig):
 @st.cache_resource
 def get_vox() -> VoxCPM:
     """
-    載入 VoxCPM 模型（僅初始化一次，避免重複載入耗時）。
-    參數說明：
-      speaker = "young_female"  → 年輕女聲；若版本不支援改用 speaker_id=0
-      speed   = 0.85            → 語速稍慢（1.0 為正常速，< 1.0 較慢）
-      pitch   = 1.05            → 音調略高，更顯甜美
+    自動偵測 VoxCPM 支援的初始化參數，
+    依序嘗試不同組合，找到能成功初始化的為止。
     """
-    return VoxCPM(
-        speaker="young_female",
-        speed=0.85,
-        pitch=1.05,
-    )
+    import inspect
+
+    sig = inspect.signature(VoxCPM.__init__)
+    available = set(sig.parameters.keys()) - {"self"}
+
+    # 候選參數組合（由詳細到簡單，逐一嘗試）
+    candidates = [
+        {"speaker": "young_female", "speed": 0.85, "pitch": 1.05},
+        {"speaker_id": 0,           "speed": 0.85, "pitch": 1.05},
+        {"voice": "young_female",   "speed": 0.85},
+        {"speaker": "young_female"},
+        {"speaker_id": 0},
+        {},   # 無參數，使用預設
+    ]
+
+    last_err = None
+    for kwargs in candidates:
+        # 只保留該版本實際存在的參數
+        filtered = {k: v for k, v in kwargs.items() if k in available}
+        try:
+            vox = VoxCPM(**filtered)
+            # 成功後把實際使用的參數顯示在 sidebar
+            st.sidebar.caption(f"🎙 VoxCPM 參數：`{filtered}`")
+            return vox
+        except TypeError as e:
+            last_err = e
+            continue
+
+    raise RuntimeError(f"VoxCPM 無法初始化，請檢查版本：{last_err}")
 
 
 def speak(text: str):
